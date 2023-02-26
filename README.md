@@ -16,7 +16,7 @@ echo 'termux-battery-status' > check_battery.sh # 查看电量 需先安装termu
 # adb 控制充电
 pkg install android-tools
 # vim auto_battery.sh
-addr='192.168.3.5:5555'
+addr=$(ifconfig | grep 192.168 | awk '{print $2}')
 adb start-server
 adb connect $addr
 var=`adb -s $addr shell dumpsys battery | grep level | cut -d ":" -f 2`
