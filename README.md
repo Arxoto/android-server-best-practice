@@ -1,3 +1,4 @@
+
 # android-server-best-practice
 
 - chroot: Root(Magisk) + Busybox + LinuxDeploy + BatteryChargeLimit
@@ -49,9 +50,17 @@ pkg install python # python --version
 pkg install proot-distro # 管理 Termux 内的 Linux 发行版
 proot-distro install debian
 # login debian
-cp /etc/apt/sources.list /etc/apt/sources.list_bak # 备份软件源
+cp /etc/apt/sources.list /etc/apt/sources.list.backup # 备份软件源
 sed -i 's/deb.debian.org/mirrors.ustc.edu.cn/g' /etc/apt/sources.list # 换源USTC科大
 sed -i 's|security.debian.org/debian-security|mirrors.ustc.edu.cn/debian-security|g' /etc/apt/sources.list
+# or
+deb https://mirrors.ustc.edu.cn/debian/ testing main contrib non-free
+# deb-src https://mirrors.ustc.edu.cn/debian/ testing main contrib non-free
+deb https://mirrors.ustc.edu.cn/debian/ testing-updates main contrib non-free
+# deb-src https://mirrors.ustc.edu.cn/debian/ testing-updates main contrib non-free
+deb https://mirrors.ustc.edu.cn/debian-security/ stable-security main non-free contrib
+# deb-src https://mirrors.ustc.edu.cn/debian-security/ stable-security main non-free contrib
+
 apt update
 apt upgrade
 apt install sudo vim
@@ -62,5 +71,52 @@ visudo # add 'sysadmin ...' under root # su - sysadmin \n sudo whoami # 验证
 # Ctrl+D logout
 echo 'proot-distro login debian --user sysadmin' > ~/login_debian.sh # 登录 debian
 # vim /etc/rc.local
-# nohup xxx > ~/log/xxx.log &
+# nohup xxx > /var/log/wom/xxx.log 2>&1 &
+
+# debian environment
+apt install git # git --version
+apt install gcc g++ make # ... -v # installed by default
+apt install rustc # curl https://sh.rustup.rs -sSf | sh # rustc --version
+apt install golang-go # go version
+apt install openjdk-17 # java -version # installed by default
+apt install nodejs npm # node -v && npm -v
+apt install python # python --version
+
+# build
+cd /opt/
+git config --global http.proxy "http://192.168.3.88:10811"
+git config --global https.proxy "http://192.168.3.88:10811"
+git config --global --get http.proxy
+git config --global --unset http.proxy
+
+# piping-server
+git clone https://github.com/nwtgck/piping-server-rust.git
+cd piping-server-rust
+cargo build --release
+./target/release/piping-server --http-port=8888
+nohup /opt/piping-server-rust/target/release/piping-server --http-port=8888 > /var/log/wom/piping-server.log 2>&1 &
+kill -9 $(ps -ef | grep piping-server | grep -v grep | awk '{print $2}')
+
+# piping-ui-web
+git clone https://github.com/nwtgck/piping-ui-web.git
+cd piping-ui-web
+npm ci
+PIPING_SERVER_URLS='["http://192.168.3.5:8888"]' npm run build
+PIPING_SERVER_URLS='["http://localhost:8888"]' npm run build
+serve -s dist # npm install -g serve
+nohup serve -s /opt/piping-ui-web/dist/ > /var/log/wom/piping-ui-web.log 2>&1 &
+kill -9 $(ps -ef | grep piping-ui-web | grep -v grep | awk '{print $2}')
+http://192.168.3.5:3000
+
+# 日志压缩
+cat > /etc/logrotate.d/wom << EOF
+/var/log/wom/wom-server.log {
+  rotate 12
+  weekly
+  compress
+  missingok
+  notifempty
+  minsize 200M
+}
+EOF
 ```
