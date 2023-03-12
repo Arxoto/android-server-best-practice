@@ -37,10 +37,13 @@ crontab -e
 */30 * * * * sh /data/data/com.termux/files/home/auto_battery.sh >> /data/data/com.termux/files/home/auto_battery.log
 # Termux:Boot 启动项（手机启动时） # echo 'sshd' > ~/.bashrc
 mkdir ~/.termux/boot/
-echo '#!/data/data/com.termux/files/usr/bin/sh' > ~/.termux/boot/start-sshd
-echo 'termux-wake-lock' >> ~/.termux/boot/start-sshd
-echo 'crond' >> ~/.termux/boot/start-sshd
-echo 'sshd' >> ~/.termux/boot/start-sshd
+cat > ~/.termux/boot/start-sshd << EOF
+#!/data/data/com.termux/files/usr/bin/sh
+termux-wake-lock
+crond
+sshd
+proot-distro login ubuntu
+EOF
 
 # environment
 pkg install openjdk-17 # java -version
@@ -69,7 +72,8 @@ useradd -m sysadmin
 passwd sysadmin # draw W on T
 visudo # add 'sysadmin ...' under root # su - sysadmin \n sudo whoami # 验证
 # Ctrl+D logout
-echo 'proot-distro login debian --user sysadmin' > ~/login_debian.sh # 登录 debian
+echo 'proot-distro login debian --user sysadmin' > ~/login_debian_sysadmin.sh # 登录 debian
+echo 'proot-distro login ubuntu' > ~/login_ubuntu_root.sh # 登录 ubuntu
 # vim /etc/rc.local
 # nohup xxx > /var/log/wom/xxx.log 2>&1 &
 
@@ -88,6 +92,7 @@ git config --global http.proxy "http://192.168.3.88:10811"
 git config --global https.proxy "http://192.168.3.88:10811"
 git config --global --get http.proxy
 git config --global --unset http.proxy
+git config --global --unset https.proxy
 
 # piping-server
 git clone https://github.com/nwtgck/piping-server-rust.git
@@ -108,6 +113,28 @@ nohup serve -s /opt/piping-ui-web/dist/ > /var/log/wom/piping-ui-web.log 2>&1 &
 kill -9 $(ps -ef | grep piping-ui-web | grep -v grep | awk '{print $2}')
 http://192.168.3.5:3000
 
+python -m http.server 9000
+cd snapdrop
+node server # snapdrop server
+serve -s client # snapdrop client
+# 需要解决局域网ssl证书的问题
+# 思路 每个终端导入证书
+
+# ================================================================================
+# 首先使用以下命令生成一个证书密钥对 key.pem 和 cert.pem，它将有效期约10年（准确地说是3650天）
+openssl req -newkey rsa:2048 -new -nodes -x509 -days 3650 -keyout key.pem -out cert.pem
+openssl x509 -inform pem -in cert.pem -outform der -out cert.cer
+# Country Name (2 letter code) [AU]:cn
+# State or Province Name (full name) [Some-State]:zhejiang
+# Locality Name (eg, city) []:hangzhou
+# Organization Name (eg, company) [Internet Widgits Pty Ltd]:wom
+# Organizational Unit Name (eg, section) []:dev
+# Common Name (e.g. server FQDN or YOUR name) []:jm
+# Email Address []:myphone@meizu.com
+# ================================================================================
+# 然后便可以起服务了 下面两个命令都可以，后者会自动打开默认浏览器运行页面
+http-server -S -C cert.pem # npm install --global http-server
+
 # 日志压缩
 cat > /etc/logrotate.d/wom << EOF
 /var/log/wom/wom-server.log {
@@ -119,4 +146,14 @@ cat > /etc/logrotate.d/wom << EOF
   minsize 200M
 }
 EOF
+
+# 出现了springboot被kill的情况 网上说是没有swap 默认是有的 临时编写监控进程
+cat > loop_check.sh << EOF
+while true
+do
+echo =====================; date; free -m; ps -ef | grep wom-server | grep -v grep;
+sleep 1;
+done
+EOF
+nohup sh loop_check.sh > /var/log/wom/loop_check.log 2>&1 &
 ```
