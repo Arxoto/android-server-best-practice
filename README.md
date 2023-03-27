@@ -14,6 +14,7 @@ termux-change-repo # 切换镜像到USTC科大
 termux-setup-storage # 申请存储权限
 
 pkg update
+pkg upgrade
 pkg install vim cronie openssh
 
 # environment
