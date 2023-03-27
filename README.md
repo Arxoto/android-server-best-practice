@@ -10,6 +10,7 @@
 1. Start the Termux:Boot app once by clicking on its launcher icon. This allows the app to be run at boot.
 
 ```shell
+passwd # 修改密码
 termux-change-repo # 切换镜像到USTC科大
 termux-setup-storage # 申请存储权限
 
