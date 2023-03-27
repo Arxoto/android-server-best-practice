@@ -1,4 +1,3 @@
-
 # android-server-best-practice
 
 - chroot: Root(Magisk) + Busybox + LinuxDeploy + BatteryChargeLimit
@@ -6,13 +5,51 @@
 
 ## Termux
 
+1. Install the Termux and Termux:Boot app.
+1. Go to Android settings and turn off battery optimizations for Termux and Termux:Boot applications.
+1. Start the Termux:Boot app once by clicking on its launcher icon. This allows the app to be run at boot.
+
 ```shell
 termux-change-repo # 切换镜像到USTC科大
-termux-wake-unlock # 防冻结
 termux-setup-storage # 申请存储权限
 
-# 支持ssh和自动充电
-pkg install vim cronie openssh termux-api
+pkg update
+pkg install vim cronie openssh
+
+# environment
+pkg install git # git --version
+pkg install gcc g++ make # ... -v
+pkg install rustc # curl https://sh.rustup.rs -sSf | sh # rustc --version
+pkg install golang-go # go version
+pkg install openjdk-17 # java -version
+pkg install nodejs npm # node -v && npm -v
+pkg install python # python --version
+
+# termux's service for sshd & crond and so on
+pkg install termux-services
+sv-enable sshd  # sshd服务设为自启动
+sv-disable sshd # 取消sshd自启动
+sv down sshd    # 停止sshd服务，并使本次Termux运行期间sshd自启动服务失效
+sv up sshd      # 启动sshd服务
+sv status sshd  # 查看sshd服务运行状态
+# custom service
+vim $PREFIX/var/service/xxx/run # 详见官网
+# Termux:Boot 启动项（手机启动时） 包括 termux-services
+cat > ~/.termux/boot/wake-lock << EOF
+#!/data/data/com.termux/files/usr/bin/sh
+termux-wake-lock
+. $PREFIX/etc/profile
+EOF
+# 每次打开bash时加载
+cat > ~/.bashrc << EOF
+alias ll="ls -l"
+alias llh="ls -lh"
+EOF
+
+
+# ============================================
+# 支持自动充电（待完善）
+pkg install termux-api
 echo 'termux-battery-status' > check_battery.sh # 查看电量 需先安装termux-api-apk 并允许应用自启动
 # adb 控制充电
 pkg install android-tools
@@ -35,20 +72,9 @@ adb kill-server
 # cron
 crontab -e
 */30 * * * * sh /data/data/com.termux/files/home/auto_battery.sh >> /data/data/com.termux/files/home/auto_battery.log
-# Termux:Boot 启动项（手机启动时） # echo 'sshd' > ~/.bashrc
-mkdir ~/.termux/boot/
-cat > ~/.termux/boot/start-sshd << EOF
-#!/data/data/com.termux/files/usr/bin/sh
-termux-wake-lock
-crond
-sshd
-proot-distro login ubuntu
-EOF
 
-# environment
-pkg install openjdk-17 # java -version
-pkg install python # python --version
 
+# ============================================
 # linux
 pkg install proot-distro # 管理 Termux 内的 Linux 发行版
 proot-distro install debian
@@ -67,6 +93,7 @@ deb https://mirrors.ustc.edu.cn/debian-security/ stable-security main non-free c
 apt update
 apt upgrade
 apt install sudo vim
+# 不需要权限分离 可以不按照sudo并不进行以下步骤
 # new user
 useradd -m sysadmin
 passwd sysadmin # draw W on T
@@ -77,14 +104,7 @@ echo 'proot-distro login ubuntu' > ~/login_ubuntu_root.sh # 登录 ubuntu
 # vim /etc/rc.local
 # nohup xxx > /var/log/wom/xxx.log 2>&1 &
 
-# debian environment
-apt install git # git --version
-apt install gcc g++ make # ... -v # installed by default
-apt install rustc # curl https://sh.rustup.rs -sSf | sh # rustc --version
-apt install golang-go # go version
-apt install openjdk-17 # java -version # installed by default
-apt install nodejs npm # node -v && npm -v
-apt install python # python --version
+# 参考上面的 environment
 
 # build
 cd /opt/
@@ -111,15 +131,26 @@ PIPING_SERVER_URLS='["http://localhost:8888"]' npm run build
 serve -s dist # npm install -g serve
 nohup serve -s /opt/piping-ui-web/dist/ > /var/log/wom/piping-ui-web.log 2>&1 &
 kill -9 $(ps -ef | grep piping-ui-web | grep -v grep | awk '{print $2}')
-http://192.168.3.5:3000
+visit for http://192.168.3.5:3000
 
+# file system
 python -m http.server 9000
-cd snapdrop
-node server # snapdrop server
-serve -s client # snapdrop client
+
 # 需要解决局域网ssl证书的问题
 # 思路 每个终端导入证书
-
+# ================================================================================
+# 包括跟证书及服务证书
+openssl genrsa -out server.key 1024
+openssl req -new -key server.key -out server.csr
+openssl genrsa -out ca.key 1024
+openssl req -new -key ca.key -out ca.csr
+openssl x509 -req -in ca.csr -signkey ca.key -out ca.crt
+openssl x509 -req -CA ca.crt -CAkey ca.key -CAcreateserial -in server.csr -out server.crt
+# ================================================================================
+# 只有证书（用自签名证书当做服务器证书）
+openssl genrsa -out server.key 1024
+openssl req -new -key server.key -out server.csr
+openssl x509 -req -in server.csr -out server.crt -signkey server.key -days 3650
 # ================================================================================
 # 首先使用以下命令生成一个证书密钥对 key.pem 和 cert.pem，它将有效期约10年（准确地说是3650天）
 openssl req -newkey rsa:2048 -new -nodes -x509 -days 3650 -keyout key.pem -out cert.pem
@@ -147,13 +178,14 @@ cat > /etc/logrotate.d/wom << EOF
 }
 EOF
 
-# 出现了springboot被kill的情况 网上说是没有swap 默认是有的 临时编写监控进程
-cat > loop_check.sh << EOF
+nohup java -jar /opt/wom-server/wom-server.jar > /var/log/wom/wom-server.log 2>&1 &
+# 出现了springboot被kill的情况 网上说是没有swap 默认是有的 临时编写监控进程  -- 应该是退出vm后就关闭了
+cat > monitor_wom.sh << EOF
 while true
 do
 echo =====================; date; free -m; ps -ef | grep wom-server | grep -v grep;
 sleep 1;
 done
 EOF
-nohup sh loop_check.sh > /var/log/wom/loop_check.log 2>&1 &
+echo 'nohup sh monitor_wom.sh > /var/log/wom/loop_check.log 2>&1 &' > loop_check.sh
 ```
