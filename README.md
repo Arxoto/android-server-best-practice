@@ -20,12 +20,13 @@ pkg install vim cronie openssh
 
 # environment
 pkg install git # git --version
-pkg install gcc g++ make # ... -v
-pkg install rustc # curl https://sh.rustup.rs -sSf | sh # rustc --version
-pkg install golang-go # go version
+pkg install clang # gcc -v && g++ -v
+pkg install make # make -v
+pkg install rust # rustc --version
+pkg install golang # go version
 pkg install openjdk-17 # java -version
-pkg install nodejs npm # node -v && npm -v
 pkg install python # python --version
+pkg install nodejs # node -v && npm -v
 
 # termux's service for sshd & crond and so on
 pkg install termux-services
